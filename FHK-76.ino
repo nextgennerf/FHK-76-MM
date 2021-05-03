@@ -8,6 +8,8 @@
 
 #include <Adafruit_NeoPixel.h>
 
+#define SIMULATED
+
 #define TRIGGER 2
 #define PUMP 3
 #define VALVE 4
@@ -24,7 +26,9 @@ long setPressure = 0L;
 bool charging = false;
 volatile long openTime = 0L;
 
-long tempVal = 0L;
+#ifdef SIMULATED
+  volatile long simVal = 0L;
+#endif
 
 void setup() {
   Serial.begin(9600);
@@ -32,10 +36,14 @@ void setup() {
   digitalWrite(PUMP, LOW);
   pinMode(VALVE, OUTPUT);
   digitalWrite(VALVE, LOW);
+  pinMode(PRESSURE, INPUT);
   pinMode(TRIGGER, INPUT);
   attachInterrupt(digitalPinToInterrupt(TRIGGER), trigger, CHANGE);
   pixels.begin();
   pixels.show();
+  #ifdef SIMULATED
+    randomSeed(analogRead(PRESSURE));
+  #endif
 }
 
 void loop() {
@@ -52,19 +60,15 @@ void loop() {
         dp--;
       if (fVal >= 100)
         dp--;
-      Serial.print(String(fVal, dp));
+      Serial.println(String(fVal, dp));
     }
   }
   //check tank pressure, start charging if below 90% of target pressure, or stop charging if at least 100% of target pressure
-  if (readPressure() < 0.9 * setPressure and openTime == 0) {
+  if (readPressure() < 0.9 * setPressure and openTime == 0 and not charging) {
     digitalWrite(PUMP, HIGH);
     charging = true;
-    
-    delay(3000);
-    tempVal = setPressure;
-    
   }
-  if (readPressure() >= setPressure) {
+  if (readPressure() >= setPressure and charging) {
     charging = false;
     digitalWrite(PUMP, LOW);
   }
@@ -73,18 +77,23 @@ void loop() {
     openTime = 0L;
     digitalWrite(VALVE, LOW);
   }
+  #ifdef SIMULATED
+    if (charging)
+      simVal += random(1000);
+  #endif
 }
 
 //read pressure from sensor
 long readPressure() {
 //  long pressureVal = (1500*(long)analogRead(PRESSURE)-153450)/8184; Where did this come from?
-
-  return tempVal;
-
-//  long pressure = 1000 * (75 * (5 * (long)analogRead(PRESSURE) - 512)) / 2048;
-//  if (pressure < 0)
-//    pressure = 0L;
-//  return pressure;
+  #ifdef SIMULATED
+    return simVal;
+  #else
+    long pressure = 1000 * (75 * (5 * (long)analogRead(PRESSURE) - 512)) / 2048;
+    if (pressure < 0)
+      pressure = 0L;
+    return pressure;
+  #endif
 }
 
 //respond to the trigger
@@ -92,6 +101,9 @@ void trigger() {
   if (digitalRead(TRIGGER) == LOW) {
     openTime = millis();
     digitalWrite(VALVE, HIGH);
+    #ifdef SIMULATED
+      simVal = 0L;
+    #endif
   } else if (millis() - openTime >= MIN_OPEN_TIME) { //close valve on trigger release if greater than minimum open time
     openTime = 0L;
     digitalWrite(VALVE, LOW);

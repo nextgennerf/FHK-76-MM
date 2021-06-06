@@ -9,6 +9,7 @@
 #include <Adafruit_NeoPixel.h>
 
 #define SIMULATED
+//#define DEBUG
 
 #define TRIGGER 2
 #define PUMP 3
@@ -27,7 +28,9 @@ bool charging = false;
 volatile long openTime = 0L;
 
 #ifdef SIMULATED
+  #define SIM_DELAY 5
   volatile long simVal = 0L;
+  long lastChange = 0L;
 #endif
 
 void setup() {
@@ -44,15 +47,24 @@ void setup() {
   #ifdef SIMULATED
     randomSeed(analogRead(PRESSURE));
   #endif
+  Serial.println("ready");
 }
 
 void loop() {
   //check for Serial commands and executes the first one of any that are available
   if (Serial.available()) {
-    String cmd = Serial.readStringUntil('.');
+    char rawInput[30]; // May shrink this once all possible commands have been determined
+    int numChars = Serial.readBytesUntil(';', rawInput, sizeof(rawInput));
+    String cmd = "";
+    for (int i = 0; i < numChars; i++)
+      cmd += rawInput[i];
     if (cmd.startsWith("set")) {
       cmd.remove(0,4);
       setPressure = cmd.toInt() * 1000L;
+      #ifdef DEBUG
+        Serial.print("Pressure setting changed to: ");
+        Serial.println(setPressure);
+      #endif
     } else if (cmd == "request") {
       float fVal = readPressure() / 1000.0;
       int dp = 3;
@@ -62,15 +74,24 @@ void loop() {
         dp--;
       Serial.println(String(fVal, dp));
     }
+//    else if (cmd.startsWith("led") {
+//      cmd = cmd.substring(4);
+//      pass;
+//      //TODO
+//    } else if (cmd.startsWith("rotate") {
+//      //TODO
+//    }
   }
   //check tank pressure, start charging if below 90% of target pressure, or stop charging if at least 100% of target pressure
   if (readPressure() < 0.9 * setPressure and openTime == 0 and not charging) {
     digitalWrite(PUMP, HIGH);
+    digitalWrite(13, HIGH);
     charging = true;
   }
   if (readPressure() >= setPressure and charging) {
     charging = false;
     digitalWrite(PUMP, LOW);
+    digitalWrite(13, LOW);
   }
   //if the trigger was released before the minimum time elapsed, this will close it instead
   if (openTime != 0 and millis() - openTime >= MIN_OPEN_TIME) {
@@ -78,8 +99,11 @@ void loop() {
     digitalWrite(VALVE, LOW);
   }
   #ifdef SIMULATED
-    if (charging)
-      simVal += random(1000);
+    long timeNow = millis();
+    if (charging and (lastChange + SIM_DELAY <= timeNow)) {
+      lastChange = timeNow;
+      simVal += random(10);
+    }
   #endif
 }
 
@@ -96,7 +120,7 @@ long readPressure() {
   #endif
 }
 
-//respond to the trigger
+//ISR that responds to the trigger
 void trigger() {
   if (digitalRead(TRIGGER) == LOW) {
     openTime = millis();

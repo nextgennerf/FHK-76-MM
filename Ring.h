@@ -1,6 +1,6 @@
 #ifndef MODE
 #define MODE
-enum class Mode {STATIC, BREATHE, CYCLE};
+enum class Mode {STATIC, BREATHE, CYCLE, ROTATE, ROTATE_BREATHE, ROTATE_CYCLE, NONE};
 #endif
 
 //Represents a ring of GRB NeoPixels
@@ -10,11 +10,13 @@ enum class Mode {STATIC, BREATHE, CYCLE};
 #include "Arduino.h"
 #include <Adafruit_NeoPixel.h>
 
+enum class Direction {CLOCKWISE, COUNTERCLOCKWISE, OFF, NONE};
+
 class Ring {
   public:
     Ring(int numPix, int pin);
     void init(int brightness);
-    void changeMode(Mode mode, int interval);
+    void changeMode(Mode mode, int interval, Direction dir);
     void animate();
     void setColor(uint16_t h, uint8_t s, uint8_t v);
     void setSingleColor(int index, uint16_t h, uint8_t s, uint8_t v);

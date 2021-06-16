@@ -46,9 +46,28 @@ void Ring::setSingleColor(int index, uint16_t h, uint8_t s, uint8_t v) {
 void Ring::animate() {
   if (_mode != Mode::STATIC && _stepCount >= _stepTarget) {
     _stepCount = 0;
-    Serial.println("beep");
+    switch (_mode) {
+      case Mode::BREATHE:
+        _v += _factor;
+        if (_factor == 0) {
+          _factor = -1;
+        } else if (_v == 255) {
+          _factor = 0;
+        } else if (_v == 0) {
+          _factor = 1;
+        }
+        if (_uniform) {
+          _np.fill(_np.gamma32(_np.ColorHSV(_h, _s, _v)));
+        } else {
+          for (int i = 0; i < _size; i++)
+            _np.setPixelColor(i, _np.gamma32(_np.ColorHSV(_colors[i][0], _colors[i][1], _colors[i][2])));
+        }
+        break;
+      default:
+        break;
+    }
+    _np.show();
   }
-//  bool returnVal = false;
 //  if (!_uniform && _mode == Mode::CYCLE) {
 //    //TODO: Figure out what rotating cycle should look like
 //  } else {
@@ -82,38 +101,54 @@ void Ring::animate() {
 //  return returnVal;
 }
 
-void Ring::changeMode(Mode mode, int interval = 0) {
-  _mode = mode;
+void Ring::changeMode(Mode mode, int interval, Direction dir) {
   _stepTarget = interval;
-  switch (mode) {
-    case Mode::BREATHE:
-      if (!_uniform) {
-        _v = 0;
-        for (int i = 0; i < _size; i++) {
-          if (_colors[i][2] != 0 && _colors[i][2] > _v)
-            _v = _colors[i][2];
+  if (mode == Mode::STATIC) {
+    cli();
+    TIMSK2 &= ~(1 << OCIE2A); //Disable the timer interrupt
+    sei();
+    if (!_uniform) {
+      switch (_mode) {
+        case Mode::BREATHE:
+          for (int i = 0; i < _size; i++)
+            _colors[i][2] = _v;
+        default:
+          break;
+      }
+    }
+  } else {
+    switch (mode) {
+      case Mode::BREATHE:
+        if (!_uniform) {
+          _v = 0;
+          for (int i = 0; i < _size; i++) {
+            if (_colors[i][2] != 0 && _colors[i][2] > _v)
+              _v = _colors[i][2];
+          }
         }
-      }
-      if (_v == 255) {
-        _factor = -1;
-      } else {
-        _factor = 1;
-      }
-      TIMSK2 |= 1 << OCIE2A; //Enable the timer interrupt
-      break;
-//    case Mode::CYCLE:
-//      _factor = 128;
-//      _h = (_h / 128) * 128; // rounds _h down to a multiple of 128
-//      _s = 255;
-//      _v = 255;
-//      if (!_rotating)
-//        _uniform = true;
-//      TIMSK2 |= 1 << OCIE2A; //Enable the timer interrupt
-//      break;
-    default:
-      TIMSK2 &= ~(1 << OCIE2A); //Disable the timer interrupt
-      break;
+        if (_v == 255) {
+          _factor = -1;
+        } else {
+          _factor = 1;
+        }
+        break;
+//      case Mode::CYCLE:
+//        _factor = 128;
+//        _h = (_h / 128) * 128; // rounds _h down to a multiple of 128
+//        _s = 255;
+//        _v = 255;
+//        if (!_rotating)
+//          _uniform = true;
+//        TIMSK2 |= 1 << OCIE2A; //Enable the timer interrupt
+//        break;
+      default:
+        break;
+    }
+    cli();
+    TIMSK2 |= 1 << OCIE2A; //Enable the timer interrupt
+    sei();
   }
+  _mode = mode;
 }
 
 void Ring::tick() {

@@ -26,7 +26,7 @@
 //#define MIN_OPEN_TIME 512 //equivalent to 1 sec
 
 Ring ring = Ring(RINGSIZE, RINGPIN);
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(PIXCOUNT, PIXPIN, NEO_RGB + NEO_KHZ800);
+//Adafruit_NeoPixel pixels = Adafruit_NeoPixel(PIXCOUNT, PIXPIN, NEO_RGB + NEO_KHZ800);
 //Pixel leftPixel = Pixel(pixels, 0);
 //Pixel rightPixel = Pixel(pixels, 1);
 //long setPressure = 0L;
@@ -60,9 +60,11 @@ void setup() {
   #ifdef SIMULATED
     randomSeed(analogRead(PRESSURE));
   #endif
-  TCCR2A |= 1 << WGM21; //Timer 2 in CTC mode
-  TCCR2B |= 1 << CS22 | 1 << CS20; // CLK/128 prescaler
+  cli();
+  TCCR2A |= (1 << WGM21); //Timer 2 in CTC mode
+  TCCR2B |= (1 << CS22) | (1 << CS20); // CLK/128 prescaler
   OCR2A = 0xF4; //ISR should trigger every 244 ticks
+  sei();
   Serial.begin(9600);
   Serial.println("ready");
 }
@@ -181,26 +183,11 @@ void loop() {
 
 //Process a Serial instruction related to the NeoPixel ring
 void processRingCommand(String cmd) {
-  if (cmd == "static") {
-    //TODO: stop ring animation (but not rotation)
-  } else if (cmd.startsWith("breathe")) {
-    Serial.println(cmd.substring(8).toInt());
-    ring.changeMode(Mode::BREATHE, cmd.substring(8).toInt());
-  } else if (cmd.startsWith("cycle")) {
-    //TODO: ring cycle effect
-  } else if (cmd.startsWith("rotate")) {
-//    String arg = cmd.substring(7);
-//    if (arg == "off") {
-//      //TODO: stop ring rotation
-//    } else {
-//      //TODO: start ring rotation
-//    }
-  } else {
-    bool single = false;
+  int ws = cmd.indexOf(" ");
+  if (isDigit(cmd.charAt(0)) || cmd.startsWith("p")) {
+    bool single = cmd.startsWith("p");
     int index;
-    int ws = cmd.indexOf(" ");
-    if (cmd.startsWith("p")) {
-      single = true;
+    if (single) {
       index = cmd.substring(1, ws).toInt();
       cmd.remove(0, ws + 1);
       ws = cmd.indexOf(" ");
@@ -215,6 +202,16 @@ void processRingCommand(String cmd) {
     } else {
       ring.setColor(h, s, v);
     }
+  } else if (ws == -1) { //static is the only command with no arguments and therefore no whitespace
+      ring.changeMode(Mode::STATIC, 0, Direction::NONE);
+  } else {
+    Mode mode = getMode(cmd.substring(0, ws));
+    int lws = cmd.lastIndexOf(" ");
+    int interval = cmd.substring(lws + 1).toInt();
+    Direction dir = Direction::NONE;
+    if (ws != lws)
+      dir = getDirection(cmd.substring(ws + 1, lws));
+    ring.changeMode(mode, interval, dir);
   }
 }
 
@@ -242,6 +239,22 @@ Mode getMode(String modeStr) {
     return Mode::BREATHE;
   } else if (modeStr == "cycle") {
     return Mode::CYCLE;
+  } else if (modeStr == "rotate") {
+    return Mode::ROTATE;
+  } else {
+    return Mode::NONE;
+  }
+}
+
+Direction getDirection(String dirStr) {
+  if (dirStr == "clw") {
+    return Direction::CLOCKWISE;    
+  } else if (dirStr == "ccw") {
+    return Direction::COUNTERCLOCKWISE;
+  } else if (dirStr == "off") {
+    return Direction::OFF;
+  } else {
+    return Direction::NONE;
   }
 }
 
@@ -264,7 +277,7 @@ Mode getMode(String modeStr) {
 //}
 
 //Timer2 CTC ISR
-ISR(TIM2_COMPA_vect) {
+ISR(TIMER2_COMPA_vect) {
 //  leftPixel.tick();
 //  rightPixel.tick();
   ring.tick();

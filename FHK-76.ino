@@ -74,18 +74,25 @@ void loop() {
   if (Serial.available()) {
     char rawInput[50];
     int numChars = Serial.readBytesUntil(';', rawInput, sizeof(rawInput));
-    String cmd;
+    if (numChars == sizeof(rawInput))
+      Serial.println("Buffer overflow!");
+    String cmd[7];
+    int index = 0;
     for (int n = 0; n < numChars; n++) {
-      cmd += rawInput[n];
+      if (rawInput[n] == ' ') {
+        index++;
+      } else {
+        cmd[index] += rawInput[n];
+      }
     }
-    if (cmd.startsWith("set")) {
-//      cmd.remove(0,4);
-//      setPressure = cmd.toInt() * 1000L;
+    Serial.println(cmd);
+    if (cmd[0] == "set")) {
+//      setPressure = cmd[1].toInt() * 1000L;
       #ifdef DEBUG
         Serial.print("Pressure set to ");
         Serial.println(setPressure);
       #endif
-    } else if (cmd == "request") {
+    } else if (cmd[0] == "request") {
 //      float fVal = readPressure() / 1000.0;
 //      int dp = 3;
 //      if (fVal >= 10)
@@ -93,14 +100,14 @@ void loop() {
 //      if (fVal >= 100)
 //        dp--;
 //      Serial.println(String(fVal, dp));
-    } else if (cmd.startsWith("pixel")) {
-//      processPixelCommand(cmd.substring(6));
-    } else if (cmd.startsWith("ring")) {
-      processRingCommand(cmd.substring(5));
+    } else if (cmd[0] == "pixel")) {
+//      processPixelCommand(cmd);
+    } else if (cmd[0] == "ring")) {
+      processRingCommand(cmd);
     }
     #ifdef DEBUG
-      if (cmd.startsWith("pressure")) {
-        pressureValue = cmd.substring(9).toFloat() * 1000L;
+      if (cmd[0] =="pressure") {
+        pressureValue = cmd[1].toFloat() * 1000L;
       }
     #endif
   }

@@ -25,7 +25,7 @@
 //#define PRESSURE A0
 //#define MIN_OPEN_TIME 512 //equivalent to 1 sec
 
-Ring ring = Ring(RINGSIZE, RINGPIN);
+Ring ring = Ring(RINGPIN);
 //Adafruit_NeoPixel pixels = Adafruit_NeoPixel(PIXCOUNT, PIXPIN, NEO_RGB + NEO_KHZ800);
 //Pixel leftPixel = Pixel(pixels, 0);
 //Pixel rightPixel = Pixel(pixels, 1);
@@ -33,6 +33,7 @@ Ring ring = Ring(RINGSIZE, RINGPIN);
 //bool charging = false;
 //volatile int openTime = 0L;
 //volatile bool valveOpen = false;
+//int msgNum = 0;
 
 #ifdef SIMULATED
   #define SIM_DELAY 5
@@ -60,12 +61,12 @@ void setup() {
   #ifdef SIMULATED
     randomSeed(analogRead(PRESSURE));
   #endif
-  cli();
-  TCCR2A |= (1 << WGM21); //Timer 2 in CTC mode
-  TCCR2B |= (1 << CS22) | (1 << CS20); // CLK/128 prescaler
-  OCR2A = 0xF4; //ISR should trigger every 244 ticks
-  sei();
-  Serial.begin(9600);
+//  cli();
+//  TCCR2A |= (1 << WGM21); //Timer 2 in CTC mode
+//  TCCR2B |= (1 << CS22) | (1 << CS20); // CLK/128 prescaler
+//  OCR2A = 0xF4; //ISR for animation should trigger every 244 ticks
+//  sei();
+  Serial.begin(115200);
   Serial.println("ready");
 }
 
@@ -74,8 +75,9 @@ void loop() {
   if (Serial.available()) {
     char rawInput[50];
     int numChars = Serial.readBytesUntil(';', rawInput, sizeof(rawInput));
-    if (numChars == sizeof(rawInput))
-      Serial.println("Buffer overflow!");
+//    if (numChars == sizeof(rawInput))
+//      Serial.println("Buffer overflow!");
+    while (not ring.isReady()) {}
     String cmd[7];
     int index = 0;
     for (int n = 0; n < numChars; n++) {
@@ -85,31 +87,43 @@ void loop() {
         cmd[index] += rawInput[n];
       }
     }
-    Serial.println(cmd);
-    if (cmd[0] == "set")) {
+    if (cmd[0] == "set") {
 //      setPressure = cmd[1].toInt() * 1000L;
       #ifdef DEBUG
         Serial.print("Pressure set to ");
         Serial.println(setPressure);
       #endif
-    } else if (cmd[0] == "request") {
-//      float fVal = readPressure() / 1000.0;
-//      int dp = 3;
-//      if (fVal >= 10)
-//        dp--;
-//      if (fVal >= 100)
-//        dp--;
-//      Serial.println(String(fVal, dp));
-    } else if (cmd[0] == "pixel")) {
-//      processPixelCommand(cmd);
-    } else if (cmd[0] == "ring")) {
-      processRingCommand(cmd);
-    }
-    #ifdef DEBUG
-      if (cmd[0] =="pressure") {
-        pressureValue = cmd[1].toFloat() * 1000L;
+    } else {
+      Serial.println("ack");
+      //Serial.println(cmd[0]);
+      if (cmd[0] == "request") {
+  //      float fVal = readPressure() / 1000.0;
+  //      int dp = 3;
+  //      if (fVal >= 10)
+  //        dp--;
+  //      if (fVal >= 100)
+  //        dp--;
+  //      Serial.println(String(fVal, dp));
+      } else if (cmd[0] == "pixel") {
+  //      processPixelCommand(cmd);
+      } else if (cmd[0] == "ring") {
+        processRingCommand(cmd);
+      } else {
+        String msg = "";
+        for (int i = 0; i < 7; i++) {
+          msg += cmd[1];
+          if (i < 6)
+            msg += " ";
+        }
+        Serial.println(msg);
       }
-    #endif
+      #ifdef DEBUG
+        if (cmd[0] =="pressure") {
+          pressureValue = cmd[1].toFloat() * 1000L;
+        }
+      #endif
+    }
+    //Serial.println(++msgNum);
   }
 //  if (readPressure() < 0.9 * setPressure and openTime == 0 and not charging) {
 //    //check tank pressure, start charging if below 90% of target pressure
@@ -132,7 +146,7 @@ void loop() {
 //    println("Doin' pixel stuff!");
 //    pixels.show();
 //  }
-  ring.animate();
+//  ring.animate();
   #ifdef SIMULATED
     long timeNow = millis();
     if (charging and (lastChange + SIM_DELAY <= timeNow)) {
@@ -189,36 +203,43 @@ void loop() {
 //}
 
 //Process a Serial instruction related to the NeoPixel ring
-void processRingCommand(String cmd) {
-  int ws = cmd.indexOf(" ");
-  if (isDigit(cmd.charAt(0)) || cmd.startsWith("p")) {
-    bool single = cmd.startsWith("p");
-    int index;
-    if (single) {
-      index = cmd.substring(1, ws).toInt();
-      cmd.remove(0, ws + 1);
-      ws = cmd.indexOf(" ");
+void processRingCommand(String cmd[]) {
+  if (cmd[1] == "change") {
+    if (cmd[2] == "time") {
+      ring.changeTime(cmd[3].toInt());
+    } else if (cmd[2] == "hue") {
+      ring.changeHue(cmd[3].toInt());
+    } else if (cmd[2] == "step") {
+      ring.changeStep(cmd[3].toInt());
     }
-    int h = cmd.substring(0, ws).toInt();
-    cmd.remove(0, ws + 1);
-    ws = cmd.indexOf(" ");
-    int s = cmd.substring(0, ws).toInt();
-    int v = cmd.substring(ws + 1).toInt();
-    if (single) {
-      ring.setSingleColor(index, h, s, v);
-    } else {
-      ring.setColor(h, s, v);
-    }
-  } else if (ws == -1) { //static is the only command with no arguments and therefore no whitespace
-      ring.changeMode(Mode::STATIC, 0, Direction::NONE);
   } else {
-    Mode mode = getMode(cmd.substring(0, ws));
-    int lws = cmd.lastIndexOf(" ");
-    int interval = cmd.substring(lws + 1).toInt();
-    Direction dir = Direction::NONE;
-    if (ws != lws)
-      dir = getDirection(cmd.substring(ws + 1, lws));
-    ring.changeMode(mode, interval, dir);
+    Mode mode = getMode(cmd[1]);
+    int layoutNum = cmd[2].toInt();
+    if (cmd[2].endsWith("a"))
+      layoutNum = -layoutNum;
+    switch (mode) {
+      case Mode::STATIC:
+        ring.newPattern(mode, layoutNum, getColor(cmd[3]), (uint16_t)cmd[4].toInt());
+        break;
+      case Mode::BREATHE:
+        ring.newPattern(mode, layoutNum, getColor(cmd[3]), (uint16_t)cmd[4].toInt(), cmd[5].toInt());
+        break;
+      case Mode::RAINBOW_SPIN:
+        ring.newPattern(mode, cmd[2].toInt(), cmd[3] == "clw");
+        break;
+      case Mode::SOLID_SPIN:
+      case Mode::FADE_SPIN:
+        ring.newPattern(mode, layoutNum, getColor(cmd[3]), (uint16_t)cmd[4].toInt(), cmd[5].toInt(), cmd[6] == "clw");
+        break;
+      default:
+        String msg = "";
+        for (int i = 0; i < 7; i++) {
+          msg += cmd[1];
+          if (i < 6)
+            msg += " ";
+        }
+        Serial.println(msg);
+    }
   }
 }
 
@@ -241,27 +262,31 @@ void processRingCommand(String cmd) {
 
 Mode getMode(String modeStr) {
   if (modeStr == "static") {
-    return Mode::STATIC;    
+    return Mode::STATIC;
   } else if (modeStr == "breathe") {
     return Mode::BREATHE;
   } else if (modeStr == "cycle") {
     return Mode::CYCLE;
-  } else if (modeStr == "rotate") {
-    return Mode::ROTATE;
-  } else {
-    return Mode::NONE;
+  } else if (modeStr == "spin") {
+    return Mode::SOLID_SPIN;
+  } else if (modeStr == "fade") {
+    return Mode::FADE_SPIN;
+  } else if (modeStr == "rainbow") {
+    return Mode::RAINBOW_SPIN;
   }
 }
 
-Direction getDirection(String dirStr) {
-  if (dirStr == "clw") {
-    return Direction::CLOCKWISE;    
-  } else if (dirStr == "ccw") {
-    return Direction::COUNTERCLOCKWISE;
-  } else if (dirStr == "off") {
-    return Direction::OFF;
-  } else {
-    return Direction::NONE;
+RColor getColor(String cStr) {
+  if (cStr == "single") {
+    return RColor::SINGLE;    
+  } else if (cStr == "rainbow") {
+    return RColor::RAINBOW;
+  } else if (cStr == "rgb") {
+    return RColor::RGB;
+  } else if (cStr == "ycm") {
+    return RColor::YCM;
+  } else if (cStr == "rygcbm") {
+    return RColor::RYGCBM;
   }
 }
 
@@ -283,11 +308,16 @@ Direction getDirection(String dirStr) {
 //  }
 //}
 
-//Timer2 CTC ISR
+//Timer2 CTC ISR for animation
 ISR(TIMER2_COMPA_vect) {
 //  leftPixel.tick();
 //  rightPixel.tick();
   ring.tick();
 //  if (valveOpen)
 //    openTime += 1;
+}
+
+//Timer2 CTC ISR for color steps
+ISR(TIMER2_COMPB_vect) {
+  ring.cStep();
 }

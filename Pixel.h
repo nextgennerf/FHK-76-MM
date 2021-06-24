@@ -1,6 +1,6 @@
 #ifndef MODE
 #define MODE
-enum class Mode {STATIC, BREATHE, CYCLE, ROTATE, ROTATE_BREATHE, ROTATE_CYCLE, NONE};
+enum class Mode {STATIC, BREATHE, CYCLE, SOLID_SPIN, FADE_SPIN, RAINBOW_SPIN};
 #endif
 
 //Represents a single RGB NeoPixel
